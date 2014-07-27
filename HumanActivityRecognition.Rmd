@@ -1,0 +1,108 @@
+---
+title: "Human Activity Recognition"
+author: "Mahathi Bhagavatula"
+date: "Sunday, July 27, 2014"
+output: html_document
+---
+
+Synopsis:
+--------
+This goal of this project is to classify the 5 different ways of performing human activity or excersice. Input dataset is the measurements from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. The model is trained using random forest algorithm. Before training the system, the data is pruned to remove junk and get important parameters. The random forest algorithm is choosed after perforiming experiments with the other model. Finally, the system could able to produce around 94% accuracy.
+
+The document will have three steps, first is to prune the data and get the important parameters. Second, to perform cross validation split the data set and apply the models on it. Third, compare the models and get the relatively better model.
+
+Pruning The Data
+----------
+Get the data from the csv file and see the summary. As we could notice that first 6 columns are either factor variables or the timestamps, which may not contribute much to the system so remove them.
+
+```{r,echo=TRUE, cache=TRUE}
+pmlTraining <- read.csv("pml-training.csv")
+str(pmlTraining)
+pmlTraining <- pmlTraining[,7:ncol(pmlTraining)]
+```
+
+Now, if we further look into the data we could find several NA's and null values present across the columns. So, try to remove them.
+
+```{r, echo=TRUE,cache=TRUE}
+pmlTraining <- pmlTraining[ , apply(pmlTraining, 2, function(x) !any(is.na(x)))]
+pmlTraining <- pmlTraining[!sapply(pmlTraining, function(x) any(x == ""))]
+```
+
+Now, Find the correlation between columns and try to remove columns which are highly correlated as they doesnt add much to the system
+
+```{r,echo=TRUE,cache=TRUE,results='hide'}
+library("caret")
+```
+```{r,echo=TRUE,cache=TRUE}
+correlation <- findCorrelation(cor(pmlTraining[sapply(pmlTraining, is.numeric)]), cutoff = .70, verbose = FALSE)
+colNames <- names(pmlTraining)
+colNames <- colNames[!colNames%in%colNames[correlation]]
+pmlTraining <- pmlTraining[colNames]
+```
+
+Finally, find the nearZeroVar, the columns which almost have zero variance, which means the column is similar across rows. Hence it  does not contribute much to the system so ignored them and try to take the top 10 columns which has much high unique and frequency values.
+
+```{r,echo=TRUE,cache=TRUE}
+nZVR <- nearZeroVar(pmlTraining, saveMetrics = TRUE)
+orderedVal <- nZVR[with(nZVR, order(-percentUnique)), ]
+nearZero <- orderedVal[orderedVal$percentUnique>9,]
+finalList <- row.names(nearZero)
+classe <- pmlTraining$classe
+```
+
+These columns along with the classe column will contribute to the priliminary data set.
+
+```{r,echo=TRUE,cache=TRUE}
+pmlTraining <- cbind(pmlTraining[finalList],classe)
+```
+
+Splitting of Dataset
+----------------------
+Now that we have pruned data which has 10 parameters and one prediction column, we can use this for training. But, since to make a better cross-validation environment, this training data set is split into 75:25 ratio. The 75% is assigned to training dataset and 25% to testing dataset.
+
+```{r,echo=TRUE,cache=TRUE}
+trainingData <- createDataPartition(y=pmlTraining$classe, p=0.75, list = FALSE)
+training <- pmlTraining[trainingData,]
+testing <- pmlTraining[-trainingData,]
+```
+
+Training and Comparing Different Models
+--------------------------------------------
+
+In this project, as a part of experimentation, two different models are tried as follows:
+
+**Model 1: Random Forest** 
+
+Random forest is applied on the 75-split training data and this model is used for prediction of 25-split testing. The accuracy of the system is found out to be 93%.
+
+Confusion matrix is also taken into consideration to get out-of-sample error for this model. The model found to have the kappa-coeff as 0.928 which signifizes that this model predicts the positive and negative samples mostly correctly.
+
+```{r,echo=TRUE,cache=TRUE,results='hide'}
+modelFit <- train(classe ~., data=training, method="rf")
+```
+
+```{r,echo=TRUE,cache=TRUE}
+predictors <- predict(modelFit,newdata=testing)
+confusionMatrix(predictors,testing$classe)
+```
+
+**Model 2: Linear Discriminate Analysis**
+
+LDA is also tried on the similar basis and the prediction accuracy is around 42% . The out-of-sample error from confusion matrix is found out to be very high. The kappa coeff which is 0.23 signifies that this model is  not a good fit.
+
+
+```{r,echo=TRUE,cache=TRUE,results='hide'}
+library("MASS")
+modelFit1 <- train(classe ~., data=training, method="lda")
+```
+```{r,echo=TRUE,cache=TRUE}
+predictors1 <- predict(modelFit1,newdata=testing)
+confusionMatrix(predictors1,testing$classe)
+```
+
+
+Conclusion 
+-----------------
+Finally, From the models tried, random forest gave pretty good and promising results than the other one. 
+
+Hence, the model produces an accuraacy of 94% by using random forest with validation on 75-25 split and by pruning unnecessary parameters.
